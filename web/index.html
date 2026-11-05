@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feriventas Web - Panel de Control</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Firebase SDK Compat -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <!-- LOGIN / REGISTER -->
+    <div id="auth-container" class="auth-container">
+        <div class="auth-card">
+            <div class="brand-header">
+                <div class="logo-icon">🎪</div>
+                <h1>Feriventas Web</h1>
+                <p>Panel de Control e Informes para Emprendedores</p>
+            </div>
+            <form id="auth-form" onsubmit="handleAuth(event)">
+                <div class="form-group" id="group-business" style="display: none;">
+                    <label>Nombre del Emprendimiento</label>
+                    <input type="text" id="business-name-input" placeholder="Ej: Tonotos Print">
+                </div>
+                <div class="form-group">
+                    <label>Correo Electrónico</label>
+                    <input type="email" id="email-input" required placeholder="tu@correo.com">
+                </div>
+                <div class="form-group">
+                    <label>Contraseña</label>
+                    <div style="position: relative;">
+                        <input type="password" id="password-input" required placeholder="••••••••">
+                        <button type="button" class="btn-icon" onclick="togglePasswordVisibility('password-input')" style="position: absolute; right: 10px; top: 8px;">👁️</button>
+                    </div>
+                </div>
+                <div style="text-align: right; margin-top: -10px; margin-bottom: 14px;">
+                    <button type="button" class="btn-link" onclick="openResetPasswordModal()">¿Olvidaste tu contraseña?</button>
+                </div>
+                <p id="auth-error" class="error-text" style="display: none;"></p>
+                <button type="submit" id="auth-submit-btn" class="btn btn-primary">Iniciar Sesión</button>
+            </form>
+            <div class="auth-toggle">
+                <button type="button" class="btn-link" onclick="toggleAuthMode()">
+                    <span id="auth-toggle-text">¿No tienes cuenta? Regístrate aquí</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div id="app-container" style="display: none;">
+        <!-- DESKTOP TOP NAVBAR -->
+        <header class="navbar">
+            <div class="nav-brand">
+                <span class="brand-logo">🎪</span>
+                <span id="nav-business-name" class="brand-title">Feriventas Web</span>
+            </div>
+            <div class="nav-center-search">
+                <input type="text" id="search-input" placeholder="🔍 Buscar producto por nombre o categoría..." onkeyup="filterProducts(this.value)">
+            </div>
+            <div class="nav-actions">
+                <button id="admin-add-btn" class="btn btn-primary" onclick="openAddProductModal()">+ Crear Producto</button>
+                <div class="dropdown">
+                    <button class="btn btn-secondary" onclick="toggleOptionsMenu(event)">⁝ Opciones</button>
+                    <div id="options-menu" class="dropdown-menu">
+                        <button class="dropdown-item" onclick="openManageVendorsModal()">
+                            <span id="menu-profile-label">👤 Perfil / Vendedor: Vendedor</span>
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item admin-only" onclick="openBusinessNameModal()">✏️ Nombre del emprendimiento</button>
+                        <button class="dropdown-item admin-only" onclick="openBulkStockModal()">➕ Carga masiva de stock</button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" onclick="handleLogout()" style="color: #ff6b6b;">🚪 Cerrar sesión (Cloud)</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- DESKTOP TAB BAR -->
+        <nav class="tab-bar">
+            <button class="tab-btn active" onclick="switchNav('lista')">🛒 Lista / Catálogo</button>
+            <button class="tab-btn" onclick="switchNav('reporte')">📊 Reporte de Ventas</button>
+            <button class="tab-btn" onclick="switchNav('ferias')">📍 Ferias y Eventos</button>
+            <button class="tab-btn" onclick="switchNav('requested')">📋 Encargos Solicitados</button>
+            <button class="tab-btn" onclick="switchNav('calculadora')">✏️ Calculadora</button>
+        </nav>
+
+        <!-- MAIN TABS CONTENT -->
+        <main class="main-content">
+            <!-- PESTAÑA 1: LISTA / CATÁLOGO -->
+            <section id="tab-lista" class="tab-content">
+                <div id="products-catalog-container">
+                    <p class="loading-text">Cargando catálogo...</p>
+                </div>
+            </section>
+
+            <!-- PESTAÑA 2: REPORTE -->
+            <section id="tab-reporte" class="tab-content" style="display: none;">
+                <div class="section-header">
+                    <h2>📊 Reporte de Ventas e Informes</h2>
+                    <input type="date" id="report-date-picker" onchange="loadReportForDate(this.value)">
+                </div>
+
+                <div class="metrics-cards">
+                    <div class="metric-card">
+                        <h3>Recaudación Bruta</h3>
+                        <p id="total-revenue" class="metric-value">$0,00</p>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Costo Mercadería</h3>
+                        <p id="total-cost" class="metric-value metric-cost">$0,00</p>
+                    </div>
+                    <div class="metric-card highlight">
+                        <h3>Ganancia Neta Real</h3>
+                        <p id="total-profit" class="metric-value metric-profit">$0,00</p>
+                    </div>
+                </div>
+
+                <div class="report-section" style="background: var(--card-bg); padding: 24px; border-radius: 20px; border: 1px solid var(--border-color);">
+                    <h3 style="color: var(--primary-pink); margin-bottom: 16px;">👥 Control de Ventas por Vendedor</h3>
+                    <div id="vendor-sales-list">
+                        <p class="empty-text">No hay ventas registradas en esta fecha.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PESTAÑA 3: FERIAS -->
+            <section id="tab-ferias" class="tab-content" style="display: none;">
+                <div class="section-header">
+                    <h2>🎪 Planificación y Comparativa de Ferias</h2>
+                    <button class="btn btn-primary" onclick="openAddFairModal()">+ Crear Feria</button>
+                </div>
+                <div id="fairs-list" class="fairs-grid">
+                    <p class="loading-text">Cargando ferias...</p>
+                </div>
+            </section>
+
+            <!-- PESTAÑA 4: ENCARGOS / PRODUCTOS SOLICITADOS -->
+            <section id="tab-requested" class="tab-content" style="display: none;">
+                <div class="section-header">
+                    <h2>📋 Productos Solicitados / Encargos de Clientes</h2>
+                    <button class="btn btn-primary" onclick="openAddRequestedModal()">+ Solicitar Producto</button>
+                </div>
+                <div id="requested-products-container" style="display: flex; flex-direction: column; gap: 12px;">
+                    <p class="loading-text">Cargando encargos...</p>
+                </div>
+            </section>
+
+            <!-- PESTAÑA 5: CALCULADORA -->
+            <section id="tab-calculadora" class="tab-content" style="display: none;">
+                <h2>✏️ Calculadora Interactiva</h2>
+                <div class="calc-grid">
+                    <div id="calc-display" class="calc-display">0</div>
+                    <button class="calc-btn" onclick="calcInput('C')">C</button>
+                    <button class="calc-btn op" onclick="calcInput('/')">÷</button>
+                    <button class="calc-btn op" onclick="calcInput('*')">×</button>
+                    <button class="calc-btn op" onclick="calcInput('-')">−</button>
+                    <button class="calc-btn" onclick="calcInput('7')">7</button>
+                    <button class="calc-btn" onclick="calcInput('8')">8</button>
+                    <button class="calc-btn" onclick="calcInput('9')">9</button>
+                    <button class="calc-btn op" onclick="calcInput('+')">+</button>
+                    <button class="calc-btn" onclick="calcInput('4')">4</button>
+                    <button class="calc-btn" onclick="calcInput('5')">5</button>
+                    <button class="calc-btn" onclick="calcInput('6')">6</button>
+                    <button class="calc-btn op" onclick="calcInput('=')">=</button>
+                    <button class="calc-btn" onclick="calcInput('1')">1</button>
+                    <button class="calc-btn" onclick="calcInput('2')">2</button>
+                    <button class="calc-btn" onclick="calcInput('3')">3</button>
+                    <button class="calc-btn" onclick="calcInput('0')">0</button>
+                </div>
+            </section>
+        </main>
+
+        <!-- BARRA INFERIOR DE TOTAL ACUMULADO / CARRITO -->
+        <div id="bottom-cart-bar" class="bottom-cart-bar">
+            <div class="total-col" onclick="openCartModal()" style="cursor: pointer;">
+                <span class="total-label">Total Acumulado: (Ver Carrito 🛒)</span>
+                <span id="cart-total-amount" class="total-amount">$ 0,00</span>
+                <span id="cart-total-units" class="total-units">0 unidades</span>
+            </div>
+            <div class="cart-actions-row">
+                <button class="btn-quick" onclick="openQuickAddModal()">⚡ Ítem Rápido / Varios</button>
+                <button id="checkout-btn" class="btn-checkout" onclick="openCheckoutModal()" disabled>✓ Cobrar Venta</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL VER Y EDITAR CARRITO -->
+    <div id="modal-cart" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3>🛒 Carrito de Compras</h3>
+                <button class="btn-link" onclick="clearCart()" style="color: #ff6b6b;">Vaciar Carrito</button>
+            </div>
+            <div id="cart-items-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto; margin-bottom: 20px;"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('modal-cart')">Cerrar</button>
+                <button class="btn-primary" onclick="closeModal('modal-cart'); openCheckoutModal();">Ir a Cobrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL AGREGAR / EDITAR PRODUCTO CON AUTOCOMPLETADO -->
+    <div id="modal-product" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3 id="modal-product-title">Agregar Producto</h3>
+            <input type="hidden" id="prod-id">
+            <div class="form-group">
+                <label>Nombre del Producto</label>
+                <input type="text" id="prod-name" placeholder="Ej: Pin55 x3">
+            </div>
+            <div class="form-group">
+                <label>Precio de Venta ($)</label>
+                <input type="number" step="0.01" id="prod-price" placeholder="400.00">
+            </div>
+            <div class="form-group">
+                <label>Precio de Costo / Fabricación ($)</label>
+                <input type="number" step="0.01" id="prod-cost" placeholder="200.00">
+            </div>
+            <div class="form-group">
+                <label>Stock Disponible (0 = Sin límite)</label>
+                <input type="number" id="prod-stock" value="0">
+            </div>
+            <div class="form-group" style="position: relative;">
+                <label>Cajón / Categoría (Sugerencias al escribir)</label>
+                <input type="text" id="prod-category" placeholder="Ej: Pins, Stickers" onkeyup="updateCategorySuggestions(this.value)">
+                <div id="category-suggestions" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('modal-product')">Cancelar</button>
+                <button class="btn-primary" onclick="saveProduct()">Guardar Producto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL RECUPERAR CONTRASEÑA -->
+    <div id="modal-reset-password" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Recuperar Contraseña</h3>
+            <p style="font-size: 14px; color: var(--text-sub); margin-bottom: 16px;">Ingresa tu correo asociado. Te enviaremos un enlace e instrucciones a tu bandeja de entrada para restablecer tu clave.</p>
+            <div class="form-group">
+                <label>Correo Electrónico</label>
+                <input type="email" id="reset-email-input" placeholder="tu@correo.com">
+            </div>
+            <p id="reset-error" class="error-text" style="display: none;"></p>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('modal-reset-password')">Cancelar</button>
+                <button class="btn-primary" onclick="sendPasswordResetEmail()">Enviar Correo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PRODUCTO SOLICITADO / ENCARGO -->
+    <div id="modal-requested" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3 id="modal-requested-title">Nuevo Producto Solicitado</h3>
+            <input type="hidden" id="req-id">
+            <div class="form-group">
+                <label>Nombre del Producto / Encargo</label>
+                <input type="text" id="req-name" placeholder="Ej: Polera Batman Talle L">
+            </div>
+            <div class="form-group">
+                <label>Nombre del Cliente (Opcional)</label>
+                <input type="text" id="req-customer" placeholder="Ej: María López">
+            </div>
+            <div class="form-group">
+                <label>Cantidad</label>
+                <input type="number" id="req-qty" value="1">
+            </div>
+            <div class="form-group">
+                <label>Nota / Detalles (Color, diseño, etc.)</label>
+                <input type="text" id="req-note" placeholder="Ej: Diseño dorado en espalda">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('modal-requested')">Cancelar</button>
+                <button class="btn-primary" onclick="saveRequestedProduct()">Guardar Encargo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL COBRAR / CHECKOUT -->
+    <div id="modal-checkout" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Cobrar Venta</h3>
+            <div class="metric-card" style="text-align: center; margin-bottom: 16px;">
+                <p>TOTAL A COBRAR</p>
+                <p id="checkout-total-display" class="metric-value" style="color: var(--primary-pink);">$ 0,00</p>
+            </div>
+            <div class="form-group">
+                <label>Medio de Pago:</label>
+                <select id="checkout-method">
+                    <option value="CASH">💵 Efectivo</option>
+                    <option value="TRANSFER">💳 Transferencia / MP</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Paga con ($)</label>
+                <input type="number" step="0.01" id="checkout-paid" placeholder="Ej: 2000">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('modal-checkout')">Cancelar</button>
+                <button class="btn-primary" onclick="confirmCheckout()">✓ Confirmar Venta</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL ITEM RÁPIDO -->
+    <div id="modal-quick" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>⚡ Agregar Ítem Rápido / Varios</h3>
+            <div class="form-group">
+                <label>Nombre o Concepto</label>
+                <input type="text" id="quick-name" placeholder="Ej: Producto Varios">
+            </div>
+            <div class="form-group">
+                <label>Precio ($)</label>
+                <input type="number" step="0.01" id="quick-price" placeholder="500.00">
+            </div>
+            <div class="form-group">
+                <label>Cantidad</label>
+                <input type="number" id="quick-qty" value="1">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('modal-quick')">Cancelar</button>
+                <button class="btn-primary" onclick="addQuickProduct()">Agregar a la Venta</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL VENDEDORES Y PERFIL -->
+    <div id="modal-vendors" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Gestionar Vendedores y Permisos</h3>
+            <p id="current-vendor-display" style="color: var(--primary-pink); font-weight: bold; margin-bottom: 16px;"></p>
+            <ul id="vendors-list-modal" style="margin-bottom: 16px; list-style: none;"></ul>
+            <div class="admin-only" style="border-top: 1px solid var(--border-color); padding-top: 16px;">
+                <label style="font-weight: bold; margin-bottom: 8px; display: block;">Agregar Nuevo Vendedor:</label>
+                <div class="form-group">
+                    <input type="text" id="modal-vendor-name" placeholder="Nombre del vendedor">
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="modal-vendor-admin"> Permisos de Administrador
+                    </label>
+                </div>
+                <button class="btn-primary" style="width: 100%;" onclick="saveNewVendor()">Agregar Vendedor</button>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('modal-vendors')">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PIN ADMIN PROMPT -->
+    <div id="modal-pin-prompt" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Contraseña de Administrador</h3>
+            <p id="pin-prompt-text">Ingresa la contraseña de Admin:</p>
+            <div class="form-group" style="margin-top: 12px; position: relative;">
+                <input type="password" id="pin-input" placeholder="••••">
+                <button type="button" class="btn-icon" onclick="togglePasswordVisibility('pin-input')" style="position: absolute; right: 10px; top: 8px;">👁️</button>
+            </div>
+            <div style="text-align: right; margin-bottom: 12px;">
+                <button type="button" class="btn-link" onclick="openResetPasswordModal()">¿Olvidaste la contraseña de Admin?</button>
+            </div>
+            <p id="pin-error" class="error-text" style="display: none;"></p>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('modal-pin-prompt')">Cancelar</button>
+                <button class="btn-primary" onclick="confirmAdminPin()">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
