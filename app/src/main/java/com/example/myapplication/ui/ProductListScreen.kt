@@ -106,6 +106,7 @@ import com.example.myapplication.util.GitHubUpdateChecker
 import com.example.myapplication.viewmodel.AuthViewModel
 import com.example.myapplication.viewmodel.ProductViewModel
 import com.example.myapplication.viewmodel.SalesViewModel
+import com.google.firebase.auth.FirebaseAuth
 import java.io.File
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
@@ -931,6 +932,8 @@ fun ProductListScreen(
     val showAdminResetNoticeDialog by authViewModel.showAdminResetNoticeDialog.collectAsState()
     val resetNoticeEmail by authViewModel.resetNoticeEmail.collectAsState()
 
+    var showVerifyAccountPasswordDialog by remember { mutableStateOf(false) }
+
     if (showManageVendorsDialog) {
         ManageVendorsDialog(
             vendors = vendors,
@@ -948,8 +951,25 @@ fun ProductListScreen(
         AdminPinPromptDialog(
             targetVendor = pendingAdminVendor!!,
             onConfirm = { pin -> authViewModel.confirmAdminPinPrompt(pin) },
-            onResetPin = { authViewModel.requestAdminPinResetEmail(context) },
+            onResetPin = {
+                authViewModel.cancelAdminPinPrompt()
+                showVerifyAccountPasswordDialog = true
+            },
             onDismiss = { authViewModel.cancelAdminPinPrompt() }
+        )
+    }
+
+    if (showVerifyAccountPasswordDialog) {
+        val userEmail = remember { FirebaseAuth.getInstance().currentUser?.email ?: "" }
+        VerifyAccountPasswordDialog(
+            userEmail = userEmail,
+            onVerify = { pass, onSuccess, onError ->
+                authViewModel.verifyAccountPasswordToResetAdminPin(pass, onSuccess, onError)
+            },
+            onRequestResetEmail = {
+                authViewModel.requestAdminPinResetEmail(context)
+            },
+            onDismiss = { showVerifyAccountPasswordDialog = false }
         )
     }
 
@@ -2732,6 +2752,102 @@ fun ManageVendorsDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(if (isAdmin) "Cerrar" else "Aceptar")
+            }
+        }
+    )
+}
+
+@Composable
+fun VerifyAccountPasswordDialog(
+    userEmail: String,
+    onVerify: (password: String, onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit,
+    onRequestResetEmail: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var passwordText by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isVerifying by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Restablecer PIN de Administrador", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = if (userEmail.isNotBlank())
+                        "Para crear un nuevo PIN de Administrador, confirma la contraseña de tu cuenta Feriventas Cloud ($userEmail):"
+                    else
+                        "Confirma la contraseña de tu cuenta para crear un nuevo PIN de Administrador:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                OutlinedTextField(
+                    value = passwordText,
+                    onValueChange = { passwordText = it; errorMessage = null },
+                    label = { Text("Contraseña de tu cuenta Cloud") },
+                    singleLine = true,
+                    visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                            Text(if (isPasswordVisible) "👁️" else "🙈", fontSize = 16.sp)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (errorMessage != null) {
+                    Text(text = errorMessage!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        onRequestResetEmail()
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(
+                        text = "¿Olvidaste también la contraseña de tu cuenta?",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !isVerifying,
+                onClick = {
+                    val pass = passwordText.trim()
+                    if (pass.isEmpty()) {
+                        errorMessage = "Ingresa la contraseña de tu cuenta."
+                        return@Button
+                    }
+                    isVerifying = true
+                    onVerify(
+                        pass,
+                        {
+                            isVerifying = false
+                            onDismiss()
+                        },
+                        { err ->
+                            isVerifying = false
+                            errorMessage = err
+                        }
+                    )
+                }
+            ) {
+                Text("Verificar y Crear Nuevo PIN", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
             }
         }
     )
