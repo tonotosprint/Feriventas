@@ -129,9 +129,11 @@ class AuthViewModel private constructor(
         if (trimmed.length >= 4) {
             repository.saveAdminPin(trimmed)
             _hasAdminPinSet.value = true
-            _userRole.value = UserRole.ADMIN
-            repository.saveUserRole(UserRole.ADMIN)
+            val target = _pendingAdminVendor.value ?: "Admin"
+            applyVendorChange(target)
+            _pendingAdminVendor.value = null
             _showCreatePinDialog.value = false
+            _showManageVendorsDialog.value = false
         }
     }
 
@@ -220,8 +222,10 @@ class AuthViewModel private constructor(
     }
 
     fun closeCreatePinDialog() {
-        if (_hasAdminPinSet.value) {
-            _showCreatePinDialog.value = false
+        _showCreatePinDialog.value = false
+        if (!_hasAdminPinSet.value) {
+            _pendingAdminVendor.value = null
+            applyVendorChange("Vendedor")
         }
     }
 
@@ -272,9 +276,17 @@ class AuthViewModel private constructor(
         val trimmed = vendor.trim().ifEmpty { "Vendedor" }
         val isAdminVendor = _adminVendors.value.contains(trimmed)
 
-        if (isAdminVendor && _userRole.value == UserRole.USER && _hasAdminPinSet.value) {
+        if (isAdminVendor) {
             _pendingAdminVendor.value = trimmed
-            _showAdminPinPrompt.value = true
+            if (_hasAdminPinSet.value) {
+                if (_userRole.value == UserRole.USER) {
+                    _showAdminPinPrompt.value = true
+                } else {
+                    applyVendorChange(trimmed)
+                }
+            } else {
+                _showCreatePinDialog.value = true
+            }
         } else {
             applyVendorChange(trimmed)
         }
