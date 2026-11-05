@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "128873755617",
+    "project_id": "feriventas",
+    "storage_bucket": "feriventas.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:128873755617:android:d480aacc8f02ce6ee658a0",
+        "android_client_info": {
+          "package_name": "com.example.myapplication"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwgs4RL_MTfbzb04h-P0zmCnWkCuZYqOc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
