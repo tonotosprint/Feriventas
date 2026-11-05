@@ -23,8 +23,20 @@ data class GitHubReleaseInfo(
 object GitHubUpdateChecker {
 
     private const val GITHUB_REPO_API = "https://api.github.com/repos/tonotosprint/Feriventas/releases/latest"
+    private const val PREFS_NAME = "github_update_prefs"
+    private const val KEY_DISMISSED_TAG = "dismissed_tag"
 
-    suspend fun checkForUpdate(context: Context): GitHubReleaseInfo? = withContext(Dispatchers.IO) {
+    fun dismissUpdate(context: Context, tagName: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_DISMISSED_TAG, tagName).apply()
+    }
+
+    fun isUpdateDismissed(context: Context, tagName: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_DISMISSED_TAG, null) == tagName
+    }
+
+    suspend fun checkForUpdate(context: Context, isManualCheck: Boolean = false): GitHubReleaseInfo? = withContext(Dispatchers.IO) {
         try {
             val url = URL(GITHUB_REPO_API)
             val connection = (url.openConnection() as HttpURLConnection).apply {
@@ -58,6 +70,9 @@ object GitHubUpdateChecker {
                 val currentVersion = getCurrentVersionName(context)
 
                 if (tagName.isNotEmpty() && isNewerVersion(tagName, currentVersion) && downloadUrl.isNotEmpty()) {
+                    if (!isManualCheck && isUpdateDismissed(context, tagName)) {
+                        return@withContext null
+                    }
                     return@withContext GitHubReleaseInfo(
                         tagName = tagName,
                         downloadUrl = downloadUrl,

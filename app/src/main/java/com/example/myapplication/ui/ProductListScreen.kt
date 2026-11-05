@@ -412,7 +412,7 @@ fun ProductListScreen(
                             onClick = {
                                 showMenu = false
                                 coroutineScope.launch {
-                                    val availableUpdate = GitHubUpdateChecker.checkForUpdate(context)
+                                    val availableUpdate = GitHubUpdateChecker.checkForUpdate(context, isManualCheck = true)
                                     if (availableUpdate != null) {
                                         updateInfo = availableUpdate
                                     } else {
@@ -1016,7 +1016,12 @@ fun ProductListScreen(
                     }
                 }
             },
-            onDismiss = { updateInfo = null }
+            onDismiss = {
+                if (updateInfo != null) {
+                    GitHubUpdateChecker.dismissUpdate(context, updateInfo!!.tagName)
+                }
+                updateInfo = null
+            }
         )
     }
 
