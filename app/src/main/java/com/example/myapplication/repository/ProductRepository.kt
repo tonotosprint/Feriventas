@@ -6,6 +6,7 @@ import com.example.myapplication.model.Product
 import com.example.myapplication.util.FirestoreSyncHelper
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 interface IProductRepository {
     fun getProducts(): List<Product>
@@ -49,24 +50,36 @@ class ProductRepository(context: Context) : IProductRepository {
             if (!json.isNullOrEmpty()) {
                 prefs.edit().putString(KEY_BUSINESS_NAME, json).apply()
                 onBusinessNameUpdated?.invoke(json)
+            } else {
+                prefs.edit().remove(KEY_BUSINESS_NAME).apply()
+                onBusinessNameUpdated?.invoke("")
             }
         }
         FirestoreSyncHelper.listenToData("products") { json ->
             if (!json.isNullOrEmpty()) {
                 prefs.edit().putString(KEY_PRODUCTS, json).apply()
                 onProductsUpdated?.invoke(parseProductsJson(json))
+            } else {
+                prefs.edit().remove(KEY_PRODUCTS).apply()
+                onProductsUpdated?.invoke(emptyList())
             }
         }
         FirestoreSyncHelper.listenToData("categories") { json ->
             if (!json.isNullOrEmpty()) {
                 prefs.edit().putString(KEY_CATEGORIES, json).apply()
                 onCategoriesUpdated?.invoke(parseStringListJson(json))
+            } else {
+                prefs.edit().remove(KEY_CATEGORIES).apply()
+                onCategoriesUpdated?.invoke(emptyList())
             }
         }
         FirestoreSyncHelper.listenToData("category_order") { json ->
             if (!json.isNullOrEmpty()) {
                 prefs.edit().putString(KEY_CATEGORY_ORDER, json).apply()
                 onCategoryOrderUpdated?.invoke(parseStringListJson(json))
+            } else {
+                prefs.edit().remove(KEY_CATEGORY_ORDER).apply()
+                onCategoryOrderUpdated?.invoke(emptyList())
             }
         }
     }
@@ -105,7 +118,19 @@ class ProductRepository(context: Context) : IProductRepository {
     override fun saveProducts(products: List<Product>) {
         val jsonArray = JSONArray()
         products.forEach { product ->
-            jsonArray.put(product.toJson())
+            val obj = JSONObject().apply {
+                put("id", product.id)
+                put("name", product.name)
+                put("price", product.price)
+                put("costPrice", product.costPrice)
+                put("quantity", product.quantity)
+                put("category", product.category)
+                put("stock", product.stock)
+                put("isTemporary", product.isTemporary)
+                put("position", product.position)
+                put("barcode", product.barcode)
+            }
+            jsonArray.put(obj)
         }
         val jsonString = jsonArray.toString()
         prefs.edit().putString(KEY_PRODUCTS, jsonString).apply()
@@ -118,42 +143,31 @@ class ProductRepository(context: Context) : IProductRepository {
     }
 
     override fun saveCategory(category: String) {
+        val currentCategories = getCategories().toMutableList()
         val trimmed = category.trim()
-        if (trimmed.isEmpty()) return
-        val current = getCategories().toMutableList()
-        if (!current.contains(trimmed)) {
-            current.add(trimmed)
+        if (trimmed.isNotEmpty() && !currentCategories.contains(trimmed)) {
+            currentCategories.add(trimmed)
             val jsonArray = JSONArray()
-            current.forEach { jsonArray.put(it) }
+            currentCategories.forEach { jsonArray.put(it) }
             val jsonString = jsonArray.toString()
             prefs.edit().putString(KEY_CATEGORIES, jsonString).apply()
             FirestoreSyncHelper.syncDataUp("categories", jsonString)
-            onCategoriesUpdated?.invoke(current)
-        }
-        val order = getCategoryOrder().toMutableList()
-        if (!order.contains(trimmed)) {
-            order.add(trimmed)
-            saveCategoryOrder(order)
+            onCategoriesUpdated?.invoke(currentCategories)
         }
     }
 
     override fun deleteCategory(category: String) {
-        val trimmed = category.trim()
-        val currentCategories = getCategories().filter { it != trimmed }
-        val jsonArray1 = JSONArray()
-        currentCategories.forEach { jsonArray1.put(it) }
-        val jsonStr1 = jsonArray1.toString()
-        prefs.edit().putString(KEY_CATEGORIES, jsonStr1).apply()
-        FirestoreSyncHelper.syncDataUp("categories", jsonStr1)
-        onCategoriesUpdated?.invoke(currentCategories)
+        val currentCategories = getCategories().filter { it != category }
+        val jsonArray = JSONArray()
+        currentCategories.forEach { jsonArray.put(it) }
+        val jsonString = jsonArray.toString()
+        prefs.edit().putString(KEY_CATEGORIES, jsonString).apply()
+        FirestoreSyncHelper.syncDataUp("categories", jsonString)
 
-        val currentOrder = getCategoryOrder().filter { it != trimmed }
-        val jsonArray2 = JSONArray()
-        currentOrder.forEach { jsonArray2.put(it) }
-        val jsonStr2 = jsonArray2.toString()
-        prefs.edit().putString(KEY_CATEGORY_ORDER, jsonStr2).apply()
-        FirestoreSyncHelper.syncDataUp("category_order", jsonStr2)
-        onCategoryOrderUpdated?.invoke(currentOrder)
+        val currentOrder = getCategoryOrder().filter { it != category }
+        saveCategoryOrder(currentOrder)
+
+        onCategoriesUpdated?.invoke(currentCategories)
     }
 
     override fun getCategoryOrder(): List<String> {
@@ -175,8 +189,21 @@ class ProductRepository(context: Context) : IProductRepository {
             val jsonArray = JSONArray(jsonString)
             val list = mutableListOf<Product>()
             for (i in 0 until jsonArray.length()) {
-                val jsonObject = jsonArray.getJSONObject(i)
-                list.add(jsonObject.toProduct())
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    Product(
+                        id = obj.optString("id", UUID.randomUUID().toString()),
+                        name = obj.optString("name", ""),
+                        price = obj.optDouble("price", 0.0),
+                        costPrice = obj.optDouble("costPrice", 0.0),
+                        quantity = obj.optInt("quantity", 0),
+                        category = obj.optString("category", "General"),
+                        stock = obj.optInt("stock", 0),
+                        isTemporary = obj.optBoolean("isTemporary", false),
+                        position = obj.optInt("position", 0),
+                        barcode = obj.optString("barcode", "")
+                    )
+                )
             }
             list
         } catch (e: Exception) {
@@ -195,33 +222,5 @@ class ProductRepository(context: Context) : IProductRepository {
         } catch (e: Exception) {
             emptyList()
         }
-    }
-
-    private fun Product.toJson(): JSONObject {
-        return JSONObject().apply {
-            put("id", id)
-            put("name", name)
-            put("price", price)
-            put("costPrice", costPrice)
-            put("quantity", 0) // La cantidad del carrito de compras es exclusivamente local de cada dispositivo
-            put("category", category)
-            put("stock", stock)
-            put("position", position)
-            put("barcode", barcode)
-        }
-    }
-
-    private fun JSONObject.toProduct(): Product {
-        return Product(
-            id = getString("id"),
-            name = getString("name"),
-            price = getDouble("price"),
-            costPrice = optDouble("costPrice", 0.0),
-            quantity = 0,
-            category = optString("category", "General"),
-            stock = optInt("stock", 0),
-            position = optInt("position", 0),
-            barcode = optString("barcode", "")
-        )
     }
 }

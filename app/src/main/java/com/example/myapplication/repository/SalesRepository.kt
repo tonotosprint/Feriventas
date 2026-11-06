@@ -36,6 +36,9 @@ class SalesRepository(context: Context) : ISalesRepository {
             if (!json.isNullOrEmpty()) {
                 prefs.edit().putString(KEY_SALES, json).apply()
                 onSalesUpdated?.invoke(parseSalesJson(json))
+            } else {
+                prefs.edit().remove(KEY_SALES).apply()
+                onSalesUpdated?.invoke(emptyList())
             }
         }
     }
@@ -51,7 +54,7 @@ class SalesRepository(context: Context) : ISalesRepository {
 
     override fun addSale(sale: SaleRecord) {
         val currentSales = getSales().toMutableList()
-        currentSales.add(0, sale) // Agregar al principio
+        currentSales.add(0, sale)
         saveSalesList(currentSales)
     }
 
@@ -69,7 +72,32 @@ class SalesRepository(context: Context) : ISalesRepository {
     private fun saveSalesList(sales: List<SaleRecord>) {
         val jsonArray = JSONArray()
         sales.forEach { sale ->
-            jsonArray.put(sale.toJson())
+            val saleObj = JSONObject().apply {
+                put("id", sale.id)
+                put("subtotalAmount", sale.subtotalAmount)
+                put("discountAmount", sale.discountAmount)
+                put("totalAmount", sale.totalAmount)
+                put("paymentMethod", sale.paymentMethod.name)
+                put("amountPaid", sale.amountPaid)
+                put("changeGiven", sale.changeGiven)
+                put("timestamp", sale.timestamp)
+                put("vendorName", sale.vendorName)
+
+                val itemsArray = JSONArray()
+                sale.items.forEach { item ->
+                    val itemObj = JSONObject().apply {
+                        put("productId", item.productId)
+                        put("productName", item.productName)
+                        put("price", item.price)
+                        put("costPrice", item.costPrice)
+                        put("quantity", item.quantity)
+                        put("category", item.category)
+                    }
+                    itemsArray.put(itemObj)
+                }
+                put("items", itemsArray)
+            }
+            jsonArray.put(saleObj)
         }
         val jsonString = jsonArray.toString()
         prefs.edit().putString(KEY_SALES, jsonString).apply()
@@ -83,79 +111,53 @@ class SalesRepository(context: Context) : ISalesRepository {
             val list = mutableListOf<SaleRecord>()
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
-                list.add(obj.toSaleRecord())
+                val id = obj.optString("id")
+                val subtotal = obj.optDouble("subtotalAmount", 0.0)
+                val discount = obj.optDouble("discountAmount", 0.0)
+                val total = obj.optDouble("totalAmount", 0.0)
+                val methodStr = obj.optString("paymentMethod", PaymentMethod.CASH.name)
+                val method = try { PaymentMethod.valueOf(methodStr) } catch (e: Exception) { PaymentMethod.CASH }
+                val paid = obj.optDouble("amountPaid", 0.0)
+                val change = obj.optDouble("changeGiven", 0.0)
+                val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                val vendorName = obj.optString("vendorName", "Admin")
+
+                val itemsList = mutableListOf<SaleItem>()
+                val itemsArray = obj.optJSONArray("items")
+                if (itemsArray != null) {
+                    for (j in 0 until itemsArray.length()) {
+                        val itemObj = itemsArray.getJSONObject(j)
+                        itemsList.add(
+                            SaleItem(
+                                productId = itemObj.optString("productId"),
+                                productName = itemObj.optString("productName"),
+                                price = itemObj.optDouble("price", 0.0),
+                                costPrice = itemObj.optDouble("costPrice", 0.0),
+                                quantity = itemObj.optInt("quantity", 1),
+                                category = itemObj.optString("category", "General")
+                            )
+                        )
+                    }
+                }
+
+                list.add(
+                    SaleRecord(
+                        id = id,
+                        items = itemsList,
+                        subtotalAmount = subtotal,
+                        discountAmount = discount,
+                        totalAmount = total,
+                        paymentMethod = method,
+                        amountPaid = paid,
+                        changeGiven = change,
+                        timestamp = timestamp,
+                        vendorName = vendorName
+                    )
+                )
             }
             list
         } catch (e: Exception) {
             emptyList()
         }
-    }
-
-    private fun SaleRecord.toJson(): JSONObject {
-        val itemsArray = JSONArray()
-        items.forEach { item ->
-            val itemObj = JSONObject().apply {
-                put("productId", item.productId)
-                put("productName", item.productName)
-                put("price", item.price)
-                put("costPrice", item.costPrice)
-                put("quantity", item.quantity)
-                put("category", item.category)
-            }
-            itemsArray.put(itemObj)
-        }
-
-        return JSONObject().apply {
-            put("id", id)
-            put("items", itemsArray)
-            put("subtotalAmount", subtotalAmount)
-            put("discountAmount", discountAmount)
-            put("totalAmount", totalAmount)
-            put("paymentMethod", paymentMethod.name)
-            put("amountPaid", amountPaid)
-            put("changeGiven", changeGiven)
-            put("timestamp", timestamp)
-            put("vendorName", vendorName)
-        }
-    }
-
-    private fun JSONObject.toSaleRecord(): SaleRecord {
-        val itemsArray = getJSONArray("items")
-        val itemsList = mutableListOf<SaleItem>()
-        for (i in 0 until itemsArray.length()) {
-            val itemObj = itemsArray.getJSONObject(i)
-            itemsList.add(
-                SaleItem(
-                    productId = itemObj.optString("productId"),
-                    productName = itemObj.getString("productName"),
-                    price = itemObj.getDouble("price"),
-                    costPrice = itemObj.optDouble("costPrice", 0.0),
-                    quantity = itemObj.getInt("quantity"),
-                    category = itemObj.optString("category", "General")
-                )
-            )
-        }
-
-        val pmString = optString("paymentMethod", PaymentMethod.CASH.name)
-        val pm = try {
-            PaymentMethod.valueOf(pmString)
-        } catch (e: Exception) {
-            PaymentMethod.CASH
-        }
-
-        val total = getDouble("totalAmount")
-
-        return SaleRecord(
-            id = getString("id"),
-            items = itemsList,
-            subtotalAmount = optDouble("subtotalAmount", total),
-            discountAmount = optDouble("discountAmount", 0.0),
-            totalAmount = total,
-            paymentMethod = pm,
-            amountPaid = optDouble("amountPaid", total),
-            changeGiven = optDouble("changeGiven", 0.0),
-            timestamp = getLong("timestamp"),
-            vendorName = optString("vendorName", "Admin")
-        )
     }
 }

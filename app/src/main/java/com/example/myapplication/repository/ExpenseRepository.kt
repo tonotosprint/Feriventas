@@ -31,6 +31,9 @@ class ExpenseRepository(context: Context) : IExpenseRepository {
             if (!json.isNullOrEmpty()) {
                 prefs.edit().putString(KEY_EXPENSES, json).apply()
                 onExpensesUpdated?.invoke(parseExpensesJson(json))
+            } else {
+                prefs.edit().remove(KEY_EXPENSES).apply()
+                onExpensesUpdated?.invoke(emptyList())
             }
         }
     }
@@ -63,8 +66,16 @@ class ExpenseRepository(context: Context) : IExpenseRepository {
 
     private fun saveExpensesList(expenses: List<ExpenseRecord>) {
         val jsonArray = JSONArray()
-        expenses.forEach { expense ->
-            jsonArray.put(expense.toJson())
+        expenses.forEach { exp ->
+            val obj = JSONObject().apply {
+                put("id", exp.id)
+                put("eventName", exp.eventName)
+                put("category", exp.category)
+                put("amount", exp.amount)
+                put("description", exp.description)
+                put("timestamp", exp.timestamp)
+            }
+            jsonArray.put(obj)
         }
         val jsonString = jsonArray.toString()
         prefs.edit().putString(KEY_EXPENSES, jsonString).apply()
@@ -78,33 +89,20 @@ class ExpenseRepository(context: Context) : IExpenseRepository {
             val list = mutableListOf<ExpenseRecord>()
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
-                list.add(obj.toExpenseRecord())
+                list.add(
+                    ExpenseRecord(
+                        id = obj.optString("id"),
+                        eventName = obj.optString("eventName", "General"),
+                        category = obj.optString("category", "Varios"),
+                        amount = obj.optDouble("amount", 0.0),
+                        description = obj.optString("description", ""),
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                    )
+                )
             }
             list
         } catch (e: Exception) {
             emptyList()
         }
-    }
-
-    private fun ExpenseRecord.toJson(): JSONObject {
-        return JSONObject().apply {
-            put("id", id)
-            put("eventName", eventName)
-            put("category", category)
-            put("amount", amount)
-            put("description", description)
-            put("timestamp", timestamp)
-        }
-    }
-
-    private fun JSONObject.toExpenseRecord(): ExpenseRecord {
-        return ExpenseRecord(
-            id = getString("id"),
-            eventName = optString("eventName", "General"),
-            category = optString("category", "Varios"),
-            amount = getDouble("amount"),
-            description = optString("description", ""),
-            timestamp = getLong("timestamp")
-        )
     }
 }

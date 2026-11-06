@@ -16,6 +16,8 @@ object FirestoreSyncHelper {
         context.getSharedPreferences("expenses_storage_prefs", Context.MODE_PRIVATE).edit().clear().apply()
         context.getSharedPreferences("fairs_storage_prefs", Context.MODE_PRIVATE).edit().clear().apply()
         context.getSharedPreferences("auth_storage_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("requested_products_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences("calculator_history_prefs", Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     fun syncDataUp(documentKey: String, jsonContent: String) {
@@ -32,7 +34,10 @@ object FirestoreSyncHelper {
     }
 
     fun fetchSyncDataDown(documentKey: String, onDataReceived: (String?) -> Unit) {
-        val uid = auth.currentUser?.uid ?: return
+        val uid = auth.currentUser?.uid ?: run {
+            onDataReceived(null)
+            return
+        }
         db.collection("users").document(uid)
             .collection("store_data").document(documentKey)
             .get()
@@ -52,17 +57,23 @@ object FirestoreSyncHelper {
     }
 
     fun listenToData(documentKey: String, onDataReceived: (String?) -> Unit): ListenerRegistration? {
-        val uid = auth.currentUser?.uid ?: return null
+        val uid = auth.currentUser?.uid ?: run {
+            onDataReceived(null)
+            return null
+        }
         return db.collection("users").document(uid)
             .collection("store_data").document(documentKey)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e("FirestoreSync", "Error en listener de $documentKey: ${error.message}", error)
+                    onDataReceived(null)
                     return@addSnapshotListener
                 }
                 if (snapshot != null && snapshot.exists()) {
                     val content = snapshot.getString("content")
                     onDataReceived(content)
+                } else {
+                    onDataReceived(null)
                 }
             }
     }

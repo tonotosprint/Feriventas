@@ -33,6 +33,9 @@ class FairRepository(context: Context) : IFairRepository {
             if (!json.isNullOrEmpty()) {
                 prefs.edit().putString(KEY_FAIRS, json).apply()
                 onFairsUpdated?.invoke(parseFairsJson(json))
+            } else {
+                prefs.edit().remove(KEY_FAIRS).apply()
+                onFairsUpdated?.invoke(emptyList())
             }
         }
     }
@@ -71,7 +74,23 @@ class FairRepository(context: Context) : IFairRepository {
     private fun saveFairsList(fairs: List<FairRecord>) {
         val jsonArray = JSONArray()
         fairs.forEach { fair ->
-            jsonArray.put(fair.toJson())
+            val obj = JSONObject().apply {
+                put("id", fair.id)
+                put("name", fair.name)
+                put("location", fair.location)
+                put("dateMillis", fair.dateMillis)
+
+                val itemsArray = JSONArray()
+                fair.itemsTaken.forEach { item ->
+                    val itemObj = JSONObject().apply {
+                        put("productName", item.productName)
+                        put("quantityTaken", item.quantityTaken)
+                    }
+                    itemsArray.put(itemObj)
+                }
+                put("itemsTaken", itemsArray)
+            }
+            jsonArray.put(obj)
         }
         val jsonString = jsonArray.toString()
         prefs.edit().putString(KEY_FAIRS, jsonString).apply()
@@ -85,75 +104,38 @@ class FairRepository(context: Context) : IFairRepository {
             val list = mutableListOf<FairRecord>()
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
-                list.add(obj.toFairRecord())
+                val id = obj.optString("id")
+                val name = obj.optString("name")
+                val location = obj.optString("location")
+                val dateMillis = obj.optLong("dateMillis", System.currentTimeMillis())
+
+                val itemsList = mutableListOf<FairItem>()
+                val itemsArray = obj.optJSONArray("itemsTaken")
+                if (itemsArray != null) {
+                    for (j in 0 until itemsArray.length()) {
+                        val itemObj = itemsArray.getJSONObject(j)
+                        itemsList.add(
+                            FairItem(
+                                productName = itemObj.optString("productName"),
+                                quantityTaken = itemObj.optInt("quantityTaken", 0)
+                            )
+                        )
+                    }
+                }
+
+                list.add(
+                    FairRecord(
+                        id = id,
+                        name = name,
+                        location = location,
+                        dateMillis = dateMillis,
+                        itemsTaken = itemsList
+                    )
+                )
             }
             list
         } catch (e: Exception) {
             emptyList()
         }
-    }
-
-    private fun FairRecord.toJson(): JSONObject {
-        val itemsArray = JSONArray()
-        itemsTaken.forEach { item ->
-            itemsArray.put(
-                JSONObject().apply {
-                    put("productName", item.productName)
-                    put("quantityTaken", item.quantityTaken)
-                }
-            )
-        }
-
-        val salesArray = JSONArray()
-        associatedSaleIds.forEach { salesArray.put(it) }
-
-        val expensesArray = JSONArray()
-        associatedExpenseIds.forEach { expensesArray.put(it) }
-
-        return JSONObject().apply {
-            put("id", id)
-            put("name", name)
-            put("dateMillis", dateMillis)
-            put("location", location)
-            put("itemsTaken", itemsArray)
-            put("associatedSaleIds", salesArray)
-            put("associatedExpenseIds", expensesArray)
-        }
-    }
-
-    private fun JSONObject.toFairRecord(): FairRecord {
-        val itemsArray = optJSONArray("itemsTaken") ?: JSONArray()
-        val itemsList = mutableListOf<FairItem>()
-        for (i in 0 until itemsArray.length()) {
-            val obj = itemsArray.getJSONObject(i)
-            itemsList.add(
-                FairItem(
-                    productName = obj.optString("productName"),
-                    quantityTaken = obj.optInt("quantityTaken", 0)
-                )
-            )
-        }
-
-        val salesArray = optJSONArray("associatedSaleIds") ?: JSONArray()
-        val salesList = mutableListOf<String>()
-        for (i in 0 until salesArray.length()) {
-            salesList.add(salesArray.getString(i))
-        }
-
-        val expensesArray = optJSONArray("associatedExpenseIds") ?: JSONArray()
-        val expensesList = mutableListOf<String>()
-        for (i in 0 until expensesArray.length()) {
-            expensesList.add(expensesArray.getString(i))
-        }
-
-        return FairRecord(
-            id = getString("id"),
-            name = getString("name"),
-            dateMillis = optLong("dateMillis", System.currentTimeMillis()),
-            location = optString("location", ""),
-            itemsTaken = itemsList,
-            associatedSaleIds = salesList,
-            associatedExpenseIds = expensesList
-        )
     }
 }
